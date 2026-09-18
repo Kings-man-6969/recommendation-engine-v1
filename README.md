@@ -31,6 +31,128 @@ Standalone, e-commerce-agnostic **Recommendation-as-a-Service** built with FastA
 
 ---
 
+## System Architecture
+
+```mermaid
+flowchart TB
+    subgraph ClientLayer["Clients & Upstream Services"]
+        WebClient["Web / Mobile Apps"]
+        AdminService["Catalog / ERP System"]
+        PromService["Prometheus Scraper"]
+    end
+
+    subgraph APILayer["FastAPI Gateway & Observability"]
+        TimingMW["RequestTimingMiddleware"]
+        Router["APIRouter (/v1)"]
+        ReadyProbe["/ready & /health"]
+        MetricsEp["/metrics"]
+        MetricsStore["MetricsStore (In-Memory Counters & Histograms)"]
+    end
+
+    subgraph CoreLayer["Core Orchestrator (Recommender)"]
+        EngineCache["Engine Cache (TTL + Version Invalidation)"]
+        Funnel["3-Stage Recommendation Funnel"]
+        FacetedFilter["Faceted Filter (Category, Brand, Price, Stock)"]
+    end
+
+    subgraph EnginesLayer["Retrieval Engines (Stage 1)"]
+        DenseEng["DenseEngine (TF-IDF + TruncatedSVD)"]
+        ContentEng["ContentEngine (Sparse TF-IDF)"]
+        BehaviorEng["BehaviorEngine (User Affinity & Co-occurrence)"]
+        PopEng["PopularityEngine (Time-Decayed Engagement)"]
+        FreshEng["FreshnessEngine (Exponential Age Decay)"]
+        GeoEng["GeoEngine (Haversine Distance Decay)"]
+    end
+
+    subgraph MLLayer["Machine Learning Layer (Stage 2 & Background)"]
+        Ranker["MLRanker (HistGradientBoostingClassifier)"]
+        FeatExtract["FeatureExtractor (14 Numerical Features)"]
+        Trainer["Async Trainer (Negative Mining, AUC & NDCG)"]
+        ModelStore[("models/ranker.joblib")]
+    end
+
+    subgraph DiversityLayer["Post-Processing (Stage 3)"]
+        MMR["MMR Diversity Engine (Category & Brand Penalization)"]
+    end
+
+    subgraph StorageLayer["Data Layer (SQLite WAL Mode)"]
+        Store["Store with Read/Write Locks"]
+        ProductsTable[("products (id, JSON data)")]
+        EventsTable[("events (user, session, product, type, timestamp)")]
+    end
+
+    WebClient -->|"/v1/recommendations, /v1/events"| TimingMW
+    AdminService -->|"/v1/catalog/products"| TimingMW
+    PromService -->|"/metrics"| MetricsEp
+
+    TimingMW --> Router
+    TimingMW -.->|Record Latency| MetricsStore
+    MetricsEp --> MetricsStore
+    Router --> ReadyProbe
+    ReadyProbe -.->|Check Connection| Store
+
+    Router -->|Upsert Products| Store
+    Router -->|Record Events| Store
+    Router -->|POST /v1/models/train| Trainer
+
+    Store --- ProductsTable
+    Store --- EventsTable
+
+    Router -->|Recommend Request| Funnel
+    Funnel --> EngineCache
+    EngineCache --> EnginesLayer
+    EnginesLayer --> Store
+
+    EnginesLayer -->|Candidates + Heuristic Scores| FacetedFilter
+    FacetedFilter -->|Filtered Candidates| FeatExtract
+    FeatExtract --> Ranker
+    Ranker -.->|Load Weights| ModelStore
+    Ranker -->|Ranked by P(Engage)| MMR
+    MMR -->|Diversified Top-K| WebClient
+
+    Trainer -->|Extract Historical Interactions| Store
+    Trainer -->|Save Model| ModelStore
+    Trainer -.->|Reload Weights| Ranker
+```
+
+---
+
+## 3-Stage Recommendation Funnel
+
+```mermaid
+flowchart LR
+    subgraph S1["Stage 1: Multi-Channel Retrieval"]
+        direction TB
+        R1["Dense SVD Semantic"]
+        R2["Sparse TF-IDF"]
+        R3["Collaborative / Affinity"]
+        R4["Popularity & Freshness"]
+        R1 & R2 & R3 & R4 --> Union["Candidate Union (~200)"]
+        Union --> Filter["Faceted Filtering"]
+    end
+
+    subgraph S2["Stage 2: Precision Ranking"]
+        direction TB
+        Feats["14 Feature Vector Extraction"]
+        ML["HistGradientBoosting Inference"]
+        Feats --> ML
+        ML --> PScore["Score = P(Engagement)"]
+    end
+
+    subgraph S3["Stage 3: MMR Diversity"]
+        direction TB
+        MMR["Maximal Marginal Relevance"]
+        Penalty["Penalize Category & Brand Overlap"]
+        MMR --> Penalty
+        Penalty --> TopK["Top-K Diverse Results"]
+    end
+
+    S1 --> S2
+    S2 --> S3
+```
+
+---
+
 ## Project Structure
 
 ```
