@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  recommender-api:
+    build: .
+    container_name: recommender-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_PATH=/app/data/recommendation.db
+      - CANDIDATE_LIMIT=200
+      - ENGINE_TTL_SECONDS=60
+      - EVENTS_WINDOW_DAYS=30
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/ready')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: recommender-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    depends_on:
+      - recommender-api
+    restart: unless-stopped

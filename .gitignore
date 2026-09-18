@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# Testing & Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local databases & artifacts
+recommendation.db*
+*.db
+*.db-wal
+*.db-shm
+data/
+models/*.joblib
+!models/.gitkeep
+
+# Environments & OS
+.env
+.DS_Store
+Thumbs.db
