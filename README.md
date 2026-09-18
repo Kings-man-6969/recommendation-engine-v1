@@ -107,7 +107,7 @@ flowchart TB
     FacetedFilter -->|Filtered Candidates| FeatExtract
     FeatExtract --> Ranker
     Ranker -.->|Load Weights| ModelStore
-    Ranker -->|Ranked by P(Engage)| MMR
+    Ranker -->|Ranked by Engagement Probability| MMR
     MMR -->|Diversified Top-K| WebClient
 
     Trainer -->|Extract Historical Interactions| Store
@@ -127,7 +127,7 @@ flowchart LR
         R2["Sparse TF-IDF"]
         R3["Collaborative / Affinity"]
         R4["Popularity & Freshness"]
-        R1 & R2 & R3 & R4 --> Union["Candidate Union (~200)"]
+        R1 & R2 & R3 & R4 --> Union["Candidate Union ~200 items"]
         Union --> Filter["Faceted Filtering"]
     end
 
@@ -136,7 +136,7 @@ flowchart LR
         Feats["14 Feature Vector Extraction"]
         ML["HistGradientBoosting Inference"]
         Feats --> ML
-        ML --> PScore["Score = P(Engagement)"]
+        ML --> PScore["Score: Engagement Probability"]
     end
 
     subgraph S3["Stage 3: MMR Diversity"]
